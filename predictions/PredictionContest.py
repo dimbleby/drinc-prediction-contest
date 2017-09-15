@@ -12,6 +12,7 @@ import json
 import logging
 from logging import handlers
 import os.path
+import pytz
 import random
 import threading
 import time
@@ -33,7 +34,8 @@ class PredictionContest(object):
         self.start_date = start_date
         self.deadline = deadline
         self._db_lock = threading.Lock()
-        self._sched = Scheduler()
+        london = pytz.timezone('Europe/London')
+        self._sched = Scheduler(timezone=london)
         self.stocks = self.db.tickers
         self.members = self.db.members
 
