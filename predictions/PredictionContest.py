@@ -1,6 +1,4 @@
-from gevent import monkey;
-
-monkey.patch_all()
+from gevent import monkey; monkey.patch_all()  # noqa: E702
 import cherrypy
 from apscheduler.scheduler import Scheduler
 from Cheetah.Template import Template
@@ -15,16 +13,15 @@ import os.path
 import pytz
 import random
 import threading
-import time
 import calendar
 import sys
 import hashlib
-from cherrypy.lib import auth_basic
 sys.path.append('predictions/templates')
 
 DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 
 app_dir = os.path.dirname(os.path.abspath(__file__))
+
 
 class PredictionContest(object):
     """CherryPy application running the monthly prediction contest"""
@@ -42,8 +39,14 @@ class PredictionContest(object):
     def start(self):
         """Start the PredictionContest"""
         self._sched.start()
-        self._sched.add_cron_job(self.update_member_histories, day_of_week='0-4', hour=17, minute=1, second=0,
-                                 misfire_grace_time=10800)
+        self._sched.add_cron_job(
+            self.update_member_histories,
+            day_of_week='0-4',
+            hour=17,
+            minute=1,
+            second=0,
+            misfire_grace_time=10800
+        )
 
     @cherrypy.expose
     def home(self):
@@ -51,7 +54,6 @@ class PredictionContest(object):
         user = cherrypy.session['user']
         account = self.get_account_details(user)
         return self.make_page('home.tmpl', account)
-
 
     @cherrypy.expose
     def index(self):
@@ -65,13 +67,13 @@ class PredictionContest(object):
         cherrypy.response.headers['Cache-Control'] = 'no-cache'
 
         # Figure out the stock prices...
-        make_data = lambda x: {'ticker': x, 'price': self.db.get_stock_price(x)}
+        def make_data(x): return {'ticker': x, 'price': self.db.get_stock_price(x)}
         stock_prices = [make_data(ticker) for ticker in self.stocks]
         stock_data = sorted(stock_prices, key=lambda x: x['ticker'])
 
         # ... the standings...
         standings = self.get_leaderboard()
-        data = {'stocks':stock_data, 'standings':standings}
+        data = {'stocks': stock_data, 'standings': standings}
 
         # ... and, maybe, the details of an individual account.
         if member:
@@ -85,12 +87,12 @@ class PredictionContest(object):
         # Don't ask again until there might be new data available (randomising
         # a bit to spread the load).
         delay = self.db.get_requery_delay()
-        delay += random.randint(1,11)
+        delay += random.randint(1, 11)
         delay = 1000 * delay
         message += '\nretry: %d\n\n' % delay
 
         return message
-    update_page._cp_config = {'tools.encode.encoding':'utf-8'}
+    update_page._cp_config = {'tools.encode.encoding': 'utf-8'}
 
     @cherrypy.expose
     def account(self, member=None):
@@ -104,15 +106,15 @@ class PredictionContest(object):
         if member not in self.members:
             raise cherrypy.HTTPRedirect('home')
 
-        dict = self.get_account_details(member)
-        dict['members'] = self.members
-        return self.make_page('account.tmpl', dict)
+        details = self.get_account_details(member)
+        details['members'] = self.members
+        return self.make_page('account.tmpl', details)
 
     @cherrypy.expose
     def purchase(self):
         """Page to purchase a stock"""
         tickers = sorted(self.stocks.keys())
-        return self.make_page('purchase.tmpl', {'stocks':tickers})
+        return self.make_page('purchase.tmpl', {'stocks': tickers})
 
     @cherrypy.expose
     def confirm_purchase(self, stock, cost, long_short, cancel=False):
@@ -137,9 +139,15 @@ class PredictionContest(object):
         cherrypy.session['price'] = price
         cherrypy.session['cost'] = pennies
         cherrypy.session['short'] = short
-        cherrypy.session['offerExpires'] = datetime.datetime.utcnow() + datetime.timedelta(seconds=30)
+        cherrypy.session['offerExpires'] = (
+            datetime.datetime.utcnow() + datetime.timedelta(seconds=30)
+        )
 
-        return self.make_page('confirm_purchase.tmpl', {'stock':stock, 'cost':pounds, 'price':price, 'short':short})
+        page = self.make_page(
+            'confirm_purchase.tmpl',
+            {'stock': stock, 'cost': pounds, 'price': price, 'short': short}
+        )
+        return page
 
     @cherrypy.expose
     def submit_purchase(self, cancel=False):
@@ -173,18 +181,28 @@ class PredictionContest(object):
     def analysis(self):
         """Analysis page"""
         # Figure out where the money went.
-        spent_long = self.get_all_stock_expenditure(short = False)
-        spent_short = self.get_all_stock_expenditure(short = True)
+        spent_long = self.get_all_stock_expenditure(short=False)
+        spent_short = self.get_all_stock_expenditure(short=True)
         expenditure = json.dumps(spent_long)
         shortinterest = json.dumps(spent_short)
 
         # Figure out how the race unfolded.
-        series = [{'type':'line',
-                   'id':member,
-                   'name':member,
-                   'data':self.get_member_history(member)} for member in self.members]
+        series = [{'type': 'line',
+                   'id': member,
+                   'name': member,
+                   'data': self.get_member_history(member)} for member in self.members]
         race = json.dumps(series)
-        return self.make_page('analysis.tmpl', {'expenditure':expenditure, 'shortinterest':shortinterest, 'race':race, 'member':cherrypy.session['user']})
+
+        page = self.make_page(
+            'analysis.tmpl',
+            {
+                'expenditure': expenditure,
+                'shortinterest': shortinterest,
+                'race': race,
+                'member': cherrypy.session['user']
+            }
+        )
+        return page
 
     @cherrypy.expose
     def settings(self, status=""):
@@ -219,20 +237,34 @@ class PredictionContest(object):
 
     def get_all_stock_expenditure(self, short):
         """Figure out how much was spent on each stock"""
-        details = [(ticker, self.db.get_stock_expenditure(ticker, short)) for ticker in self.stocks]
-        expenditure = [{'name':ticker, 'y':y} for (ticker, y) in details if y > 0]
+        details = [
+            (ticker, self.db.get_stock_expenditure(ticker, short)) for ticker in self.stocks
+        ]
+        expenditure = [{'name': ticker, 'y': y} for (ticker, y) in details if y > 0]
 
         return sorted(expenditure, key=lambda val: val['y'], reverse=True)
 
     def make_page(self, template='home.tmpl', details={}):
         """Make a page: figure out the generic information required for the wrapper and then
         use the provided template"""
-        make_data = lambda ticker, name: {'ticker': ticker, 'price': self.db.get_stock_price(ticker), 'full_name': name}
+        def make_data(ticker, name):
+            data = {
+                'ticker': ticker,
+                'price': self.db.get_stock_price(ticker),
+                'full_name': name
+            }
+            return data
+
         stock_prices = [make_data(ticker, name) for (ticker, name) in self.stocks.iteritems()]
         stock_data = sorted(stock_prices, key=lambda x: x['ticker'])
         standings = self.get_leaderboard()
         user = cherrypy.session['user']
-        base = {'tickers':stock_data, 'standings':standings, 'past_deadline':self.deadline_passed(), 'user':user}
+        base = {
+            'tickers': stock_data,
+            'standings': standings,
+            'past_deadline': self.deadline_passed(),
+            'user': user
+        }
         t = Template(file='predictions/templates/' + template, searchList=[base, details])
         return str(t)
 
@@ -240,11 +272,13 @@ class PredictionContest(object):
         """Get the details describing a member account"""
         def convert(transaction):
             value_pennies = self.db.get_current_value(transaction)
-            detail = {'stock':transaction['stock'],
-                      'price':transaction['price'],
-                      'cost' :self.pennies_to_pounds(transaction['cost']),
-                      'value':self.pennies_to_pounds(value_pennies),
-                      'short':transaction['short']}
+            detail = {
+                'stock': transaction['stock'],
+                'price': transaction['price'],
+                'cost': self.pennies_to_pounds(transaction['cost']),
+                'value': self.pennies_to_pounds(value_pennies),
+                'short': transaction['short']
+            }
             return detail
 
         transactions = self.db.get_member_transactions(member)
@@ -255,7 +289,13 @@ class PredictionContest(object):
         cash = self.remaining_cash(transactions=transactions)
         cash = self.pennies_to_pounds(cash)
 
-        account = {'member':member, 'transactions':details, 'total':total, 'spent':spent, 'cash':cash}
+        account = {
+            'member': member,
+            'transactions': details,
+            'total': total,
+            'spent': spent,
+            'cash': cash
+        }
         return account
 
     def get_leaderboard(self):
@@ -263,7 +303,7 @@ class PredictionContest(object):
         def details(member):
             pennies = self.db.get_current_member_value(member)
             pounds = self.pennies_to_pounds(pennies)
-            return {'initials':member, 'value':pounds}
+            return {'initials': member, 'value': pounds}
 
         standings = [details(member) for member in self.members]
         return sorted(standings, key=lambda x: x['value'], reverse=True)
@@ -322,7 +362,7 @@ class PredictionContest(object):
 
     def get_member_history(self, member):
         """Get the historical value of a member's portfolio for this month"""
-        make_pair = lambda date, value: [1000 * calendar.timegm(date.timetuple()), value]
+        def make_pair(date, value): return [1000 * calendar.timegm(date.timetuple()), value]
         data = self.db.get_member_history(member, self.start_date)
         values = [make_pair(date, value) for (date, value) in data.iteritems() if value > 0]
         values.sort(key=lambda (d, _): d)
@@ -353,12 +393,14 @@ class PredictionContest(object):
         """Get the password hash of the member, or None if the member does not exist"""
         return self.db.get_password_hash(member)
 
+
 class DecimalEncoder(json.JSONEncoder):
     """JSON encoder that understands Decimal objects"""
     def default(self, obj):
         if isinstance(obj, Decimal):
             return str(obj)
         return json.JSONEncoder.default(self, obj)
+
 
 def configure_logging():
     """Configure logging on our web server"""
@@ -386,6 +428,7 @@ def configure_logging():
     handler = getRotatingFileHandler('logs/access.log')
     log.access_log.addHandler(handler)
 
+
 def start_server(contest, port=7070):
     """Start the server"""
     contest = contest
@@ -402,19 +445,31 @@ def start_server(contest, port=7070):
                 return True
         return False
 
-    basic_auth = {'tools.sessions.on': True,
-                  'tools.auth_basic.on': True,
-                  'tools.auth_basic.realm': 'localhost',
-                  'tools.auth_basic.checkpassword': validate_password}
-    app_config = {'/': basic_auth,
-                  '/bootstrap.css': { 'tools.staticfile.on':True,
-                                      'tools.staticfile.filename':app_dir + '/css/bootstrap.min.css' },
-                  '/bootstrap.js':  { 'tools.staticfile.on':True,
-                                      'tools.staticfile.filename':app_dir + '/js/bootstrap.min.js' },
-                  '/jquery.js':     { 'tools.staticfile.on':True,
-                                      'tools.staticfile.filename':app_dir + '/js/jquery-1.9.1.min.js' },
-                  '/highcharts.js': { 'tools.staticfile.on':True,
-                                      'tools.staticfile.filename':app_dir + '/js/highcharts.js' }}
+    basic_auth = {
+        'tools.sessions.on': True,
+        'tools.auth_basic.on': True,
+        'tools.auth_basic.realm': 'localhost',
+        'tools.auth_basic.checkpassword': validate_password
+    }
+    app_config = {
+        '/': basic_auth,
+        '/bootstrap.css': {
+            'tools.staticfile.on': True,
+            'tools.staticfile.filename': app_dir + '/css/bootstrap.min.css'
+        },
+        '/bootstrap.js': {
+            'tools.staticfile.on': True,
+            'tools.staticfile.filename': app_dir + '/js/bootstrap.min.js'
+        },
+        '/jquery.js': {
+            'tools.staticfile.on': True,
+            'tools.staticfile.filename': app_dir + '/js/jquery-1.9.1.min.js'
+        },
+        '/highcharts.js': {
+            'tools.staticfile.on': True,
+            'tools.staticfile.filename': app_dir + '/js/highcharts.js'
+        }
+    }
 
     app = cherrypy.tree.mount(contest, '/drinc/', config=app_config)
     pywsgi.WSGIServer(('', port), app, log=None).serve_forever()
